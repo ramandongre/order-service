@@ -11,7 +11,11 @@ node {
 
     stage('Build & Test') {
         if(currentBuild.result != 'ABORTED' && currentBuild.result != 'FAILURE') {
-            // TODO - Run maven tests, stash the generated pact files.
+            def buildResult = sh returnStatus: true, script: 'mvn clean install'
+            if(buildResult == 1) {
+                currentBuild.result = 'FAILURE'
+            }
+            stash includes: 'target/pacts/*.*', name: 'pact_files'
         }
     }
 
@@ -24,9 +28,11 @@ node {
 
     stage('Publish Pact to pact broker') {
         if(currentBuild.result != 'ABORTED' && currentBuild.result != 'FAILURE') {
-            // TODO - Unstash pact files.
-            // TODO - Extract application version
-            // TODO - Publish pacts to pact broker
+            unstash 'pact_files'
+            def pactBrockerCli = "/usr/share/jenkins/ref/pact/bin/pact-broker"
+            def artifactFile = findFiles glob: 'target/order-service*.jar'
+            def versionNo = artifactFile[0].name.minus("order-service-").minus(".jar")
+            sh "${pactBrockerCli} publish target/pacts --consumer-app-version=${versionNo} --broker-base-url=http://broker_app"
         }
     }
 
@@ -40,4 +46,5 @@ node {
             slackSend (color: '#3EB991', message: "BACK TO NORMAL: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})", channel: '#order-service-team')
         }
     }
+
 }
